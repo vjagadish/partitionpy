@@ -16,7 +16,7 @@ class KafkaDbClient (IDbClient):
 		self.producer = SimpleProducer(self.kafka, async=False,
                           req_acks=SimpleProducer.ACK_AFTER_CLUSTER_COMMIT,
                           ack_timeout=5000)
-		self.topic = 'rr5'
+		self.topic = 'rr7'
 		command = "sudo /opt/kafka/bin/kafka-create-topic.sh  --partition 1  --topic %s --replica 3 --zookeeper n4:2181  " %(self.topic)
 		print command
 		self.executeProcessLocally (command)

@@ -1,17 +1,21 @@
 import paramiko
 import threading
+import time
+from threading import Timer
+import sched
+
+def print_time(x):
+	print "From print_time %s  ", str(x)
 
 def foo():
-	i=0
-	while(i<10000):
-		print '%s from thread %s '%(str(i), threading.current_thread().name)
-		i=i+1
+	print time.time()
+	x=1
+	Timer(5, print_time, (x,)).start()
+	Timer(10, print_time, (x,)).start()
+	time.sleep(11)
 
-th1 = threading.Thread(target=foo, args=[])
-th2 = threading.Thread(target=foo, args=[])
-th3 = threading.Thread(target=foo, args=[])
-th1.start()
-th2.start()
-th3.start()
+#foo()
+
+
 
 

@@ -1,8 +1,11 @@
 import threading
 from KafkaDbClient import KafkaDbClient
-
-
-
+from StaticClusterConfigProvider import StaticClusterConfigProvider
+from IsolateNodeFailureMode import IsolateNodeFailureMode
+from KillRestartFailureMode import KillRestartFailureMode
+import json
+import time
+from threading import Timer
 
 def spawnClients (numclients, maxVal, clientInstance):
 	interval = maxVal/numclients
@@ -63,8 +66,9 @@ def rangePut (low, high, clientInstance):
 	with open(filename,'w') as f: 
 		while (i<high):
 			(status, timetaken) = clientInstance.put(i)
-			print 'from thread: %s data inserted: %s status: %s time: %s' %(str(i),threading.current_thread().name, status, timetaken)
+			#print 'from thread: %s data inserted: %s status: %s time: %s' %(str(i),threading.current_thread().name, status, timetaken)
 			f.write('%s:%s:%s\n'%(str(i), str(status), str(timetaken)))
+			time.sleep(0.3)
 			i=i+1
 
 def printStats(log, successes, fails):
@@ -87,15 +91,70 @@ def printStats(log, successes, fails):
 			notAckedAndPresent.add(data)
 	return (ackedAndLost, ackedAndPresent, notAckedAndPresent, notAckedAndAbsent)	
 
+def buildFailureObjects(failureConfig):
 
-def stateMachine():
+	jsonConfigString = """
+	[
+	{"alias":"n1", "ip":"172.31.40.107", "authorized_user":"ec2-user"},
+	{"alias":"n2", "ip":"172.31.32.165", "authorized_user":"ec2-user"},
+	{"alias":"n3", "ip":"172.31.44.108", "authorized_user":"ec2-user"}
+	]
+	"""
+
+	parsedConfig = json.loads(config)
+	failureModes = []
+	for configElem in parsedConfig:
+		action = configElem['action']
+		if action == 'ISOLATE':
+			clusterConfigProvider = StaticClusterConfigProvider(jsonConfigString)
+			targetNode = configElem['node']
+			isolateNodeFailureMode = IsolateNodeFailureMode(targetNode, clusterConfigProvider)
+			failureModes.append(isolateNodeFailureMode)
+		if action == 'CRASH':
+			clusterConfigProvider = StaticClusterConfigProvider(jsonConfigString)
+			targetNode = configElem['node']
+			killFailureMode = KillRestartFailureMode(targetNode, configElem['killCmd'], configElem['restartCmd'], clusterConfigProvider)
+			failureModes.append(killFailureMode)
+
+	return failureModes
+
+
+def failureScheduler (timeBetweenFailures, failureConfig):
+	failures = buildFailureObjects(failureConfig)
+	print failures
+	print 'Will sleep for 120 s before beginning failures'	
+	time.sleep(3)
+	eventTime = 2
+	for failure in failures:
+		Timer(eventTime, scheduleFunction, (failure,)).start()		
+		print 'Wait 20 seconds between Failures'
+		eventTime+=timeBetweenFailures
+
+	sleepTime = len(failures) * timeBetweenFailures  * 2
+	time.sleep(sleepTime)
+
+
+
+def scheduleFunction (failureMode):
+	#print 'hey'
+	failureMode.doFailure()
+
+			
+def stateMachine(config):
 	numclients = 3
-	maxVal = 30
+	maxVal = 3000
 	cli = KafkaDbClient()
+	print 'Going to start failure scheduler'
+	t = threading.Thread(target=failureScheduler, args=(75, config,)) 
+	t.start()
+
 	spawnClients(numclients, maxVal, cli)
+
+
 	(successes, fails) = collateLogFiles(numclients, maxVal)
 	log = set(cli.getLog())
 	(ackedAndLost, ackedAndPresent, notAckedAndPresent, notAckedAndAbsent) = printStats (log, successes, fails)
+
 	print 'STATISTICS'
 	print 'ackedAndLost %s' %(len(ackedAndLost))
 	print 'ackedAndPresent %s'%(len(ackedAndPresent))
@@ -105,10 +164,20 @@ def stateMachine():
 	print sorted(successes)
 	print sorted(log)
 
-
-
-
+	t.join()
 
 if __name__ == '__main__':
-	stateMachine()
+	config = """[
+	{"action":"ISOLATE", "node": "n1"}, 
+	{
+	"action": "CRASH", "node" : "n1", 
+	"killCmd": "ps -effw | grep kafka | grep -v grep | awk '{print $2}' | xargs sudo kill -9",
+	"restartCmd": "sudo /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties > /tmp/oo  2>&1 &"
+	}
+	]"""
+	l = buildFailureObjects(config)
+	print l
+
+
+	stateMachine(config)
 
