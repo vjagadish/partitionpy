@@ -1,10 +1,11 @@
+import json
+import subprocess
 import threading
-from KafkaDbClient import KafkaDbClient
+import time
+from RedisClient import RedisClient
 from StaticClusterConfigProvider import StaticClusterConfigProvider
 from IsolateNodeFailureMode import IsolateNodeFailureMode
 from KillRestartFailureMode import KillRestartFailureMode
-import json
-import time
 from threading import Timer
 
 def spawnClients (numclients, maxVal, clientInstance):
@@ -13,7 +14,6 @@ def spawnClients (numclients, maxVal, clientInstance):
 	high=maxVal
 
 	threads=[]
-
 
 	while (low<high):
 		print 'low high %s %s' %(low, low+interval)
@@ -60,8 +60,6 @@ def collateLogFiles (numclients, maxVal):
 
 def rangePut (low, high, clientInstance):
 	i = low
-	print 'boo'
-
 	filename = '/tmp/w%s'%(str(low))
 	with open(filename,'w') as f: 
 		while (i<high):
@@ -93,11 +91,19 @@ def printStats(log, successes, fails):
 
 def buildFailureObjects(failureConfig):
 
+	#jsonConfigString = """
+	#[
+	#{"alias":"n1", "ip":"172.31.40.107", "authorized_user":"ec2-user"},
+	#{"alias":"n2", "ip":"172.31.32.165", "authorized_user":"ec2-user"},
+	#{"alias":"n3", "ip":"172.31.44.108", "authorized_user":"ec2-user"}
+	#]
+	#"""
+
 	jsonConfigString = """
 	[
-	{"alias":"n1", "ip":"172.31.40.107", "authorized_user":"ec2-user"},
 	{"alias":"n2", "ip":"172.31.32.165", "authorized_user":"ec2-user"},
-	{"alias":"n3", "ip":"172.31.44.108", "authorized_user":"ec2-user"}
+	{"alias":"n3", "ip":"172.31.44.108", "authorized_user":"ec2-user"},
+	{"alias":"n4", "ip":"172.31.39.157", "authorized_user":"ec2-user"}
 	]
 	"""
 
@@ -136,16 +142,15 @@ def failureScheduler (timeBetweenFailures, failureConfig):
 
 
 def scheduleFunction (failureMode):
-	#print 'hey'
 	failureMode.doFailure()
 
 			
 def stateMachine(config):
-	numclients = 3
-	maxVal = 3000
-	cli = KafkaDbClient()
+	numclients = 1
+	maxVal = 1000
+	cli = RedisClient()
 	print 'Going to start failure scheduler'
-	t = threading.Thread(target=failureScheduler, args=(75, config,)) 
+	t = threading.Thread(target=failureScheduler, args=(10, config,)) 
 	t.start()
 
 	spawnClients(numclients, maxVal, cli)
@@ -166,18 +171,22 @@ def stateMachine(config):
 
 	t.join()
 
+def getRedisConfig():
+	redis_config = """[ {"action":"ISOLATE", "node": "n4"} ]"""
+	return redis_config
+
 if __name__ == '__main__':
-	config = """[
-	{"action":"ISOLATE", "node": "n1"}, 
-	{
-	"action": "CRASH", "node" : "n1", 
-	"killCmd": "ps -effw | grep kafka | grep -v grep | awk '{print $2}' | xargs sudo kill -9",
-	"restartCmd": "sudo /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties > /tmp/oo  2>&1 &"
-	}
-	]"""
+	# config = """[
+	# {"action":"ISOLATE", "node": "n1"}, 
+	# {
+	# "action": "CRASH", "node" : "n1", 
+	# "killCmd": "ps -effw | grep kafka | grep -v grep | awk '{print $2}' | xargs sudo kill -9",
+	# "restartCmd": "sudo /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties > /tmp/oo  2>&1 &"
+	# }
+	# ]"""
+	config = getRedisConfig()
 	l = buildFailureObjects(config)
 	print l
-
 
 	stateMachine(config)
 
