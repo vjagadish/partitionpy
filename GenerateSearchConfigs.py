@@ -9,7 +9,9 @@ for node in nodes:
 	for mode in failure_modes:
 		failures.append((node, mode))
 
-print failures	
+print "Nodes: ", nodes
+print "Failure Modes: ", failure_modes
+print "Searching over failure modes..."
 
 condition_list = []
 for i in xrange(2**(len(failures))):
@@ -18,8 +20,6 @@ for i in xrange(2**(len(failures))):
 		if i & j :
 			condition.append(failures[j])
 	condition_list.append(condition)
-
-print condition_list
 
 def getFailureConfig(condition):
 	config = {}
